@@ -14,7 +14,7 @@ def clone_github_repo(repo_url, local_dir):
 # Function to apply syntax highlighting to code
 def highlight_code(code, language):
     lexer = get_lexer_by_name(language, stripall=True)
-    formatter = HtmlFormatter(linenos=True, cssclass="source")
+    formatter = HtmlFormatter(linenos='inline', cssclass="source", style='friendly')
     return highlight(code, lexer, formatter), formatter.get_style_defs('.source')
 
 # Clone the GitHub repository
@@ -62,16 +62,13 @@ for root, dirs, files in os.walk(local_dir):
                     code_css = css
                 
                 # Create a chapter
+                chapter_content = f'<h1>{file}</h1><style>{css}</style>{highlighted_code}'
                 chapter = epub.EpubHtml(title=file, file_name=file + '.xhtml', lang='en')
-                chapter.content = f'<h1>{file}</h1>{highlighted_code}'
+                chapter.content = chapter_content
                 book.add_item(chapter)
                 
                 # Add the chapter to the chapters list
                 chapters.append(chapter)
-
-# Add the CSS for code highlighting to the book
-style_code = epub.EpubItem(uid="style_code", file_name="style/code.css", media_type="text/css", content=code_css)
-book.add_item(style_code)
 
 # Define the spine and TOC using the chapters list
 book.spine = ['nav'] + chapters
