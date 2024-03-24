@@ -1,9 +1,15 @@
 import os
 import subprocess
+import random
+import time
 from ebooklib import epub
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Function to clone a GitHub repository
 def clone_github_repo(repo_url, local_dir):
@@ -11,25 +17,35 @@ def clone_github_repo(repo_url, local_dir):
         subprocess.run(['rm', '-rf', local_dir], check=True)
     subprocess.run(['git', 'clone', repo_url, local_dir], check=True)
 
+# Extract repository name and author from URL
+def extract_repo_details(repo_url):
+    parts = repo_url.split('/')
+    repo_name = parts[-1].replace('.git', '')
+    author = parts[-2] if len(parts) > 1 else 'Unknown Author'
+    return repo_name, author
+
 # Function to apply syntax highlighting to code
 def highlight_code(code, language):
     lexer = get_lexer_by_name(language, stripall=True)
     formatter = HtmlFormatter(linenos='inline', cssclass="source", style='friendly')
     return highlight(code, lexer, formatter), formatter.get_style_defs('.source')
 
+# Main script
+repo_url = os.getenv('REPO_URL')
+repo_name, author = extract_repo_details(repo_url)
+local_dir = repo_name
+
 # Clone the GitHub repository
-repo_url = 'https://github.com/YYvanYang/ai-gateway-openai-wrapper.git'
-local_dir = 'repo'
 clone_github_repo(repo_url, local_dir)
 
 # Create an EPUB book
 book = epub.EpubBook()
 
-# Set metadata
-book.set_identifier('id123456')
-book.set_title('Your Book Title')
+# Set dynamic metadata
+book.set_identifier(str(random.randint(10000, 99999)))
+book.set_title(repo_name)
 book.set_language('en')
-book.add_author('Author Name')
+book.add_author(author)
 
 # Initialize a list to store chapters
 chapters = []
@@ -78,5 +94,13 @@ book.toc = [(epub.Section('Chapters'), chapters)]
 book.add_item(epub.EpubNcx())
 book.add_item(epub.EpubNav())
 
+# Generate book file name with timestamp
+timestamp = time.strftime('%Y%m%d%H%M%S')
+book_file_name = f'{repo_name}_{timestamp}.epub'
+
 # Write the EPUB file
-epub.write_epub('your_book.epub', book, {})
+epub.write_epub(book_file_name, book, {})
+
+# Print the generated book name and local path
+print(f'Generated book: {book_file_name}')
+print(f'Local path: {os.path.abspath(book_file_name)}')
