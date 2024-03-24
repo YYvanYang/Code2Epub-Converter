@@ -14,33 +14,43 @@ Code2Epub Converter 是一个用于将代码仓库转换成 EPUB 格式电子书
 
 ### 安装依赖
 
-本项目依赖于 `ebooklib` 库用于生成 EPUB 文件，`pygments` 用于代码高亮。您可以通过以下命令安装这些依赖：
+本项目依赖于以下库：
+
+- `ebooklib`: 用于生成 EPUB 文件。
+- `pygments`: 用于代码高亮。
+- `python-dotenv`: 用于从 `.env` 文件加载环境变量。
+
+您可以通过以下命令安装这些依赖：
 
 ```bash
-pip install ebooklib pygments
+pip install ebooklib pygments python-dotenv
 ```
+
+## 配置
+
+1. 在项目根目录下创建一个 `.env` 文件，并配置您的代码仓库路径。例如：
+
+```env
+REPO_URL=https://your-repository-url-here.git
+```
+
+请将 `https://your-repository-url-here.git` 替换为您的代码仓库的实际 URL。
 
 ## 使用方法
 
-1. 将您的代码仓库克隆到本地（如果尚未克隆）。例如：
+1. 确保您已经在 `.env` 文件中正确配置了仓库 URL。
+2. 运行 Code2Epub Converter。脚本会读取 `.env` 文件中的 `REPO_URL`，克隆仓库并开始转换过程。
 
 ```bash
-git clone https://your-repository-url-here
+python code2epub.py
 ```
-
-2. 运行 Code2Epub Converter，指定代码仓库的本地路径和输出的 EPUB 文件名。例如：
-
-```bash
-python code2epub.py /path/to/your/repository output.epub
-```
-
-请将 `/path/to/your/repository` 替换为您代码仓库的实际路径，`output.epub` 替换为您希望生成的 EPUB 文件名。
 
 ## 功能特点
 
 - **代码高亮**：利用 `pygments` 实现代码高亮，使代码更易读。
 - **自动目录生成**：根据代码仓库的结构自动生成 EPUB 的目录，方便快速导航。
 - **文件名冲突处理**：通过将文件路径转换为唯一文件名来避免文件名冲突。
+- **环境变量支持**：支持从 `.env` 文件加载配置，简化配置过程。
 
 ## 贡献
 
