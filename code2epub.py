@@ -66,7 +66,7 @@ code_css = None
 # Walk through the directory and process files
 for root, dirs, files in os.walk(full_repo_dir):
     for file in files:
-        if file.endswith(('.js', '.ts', '.py', '.jsx', '.tsx', '.rs')):
+        if file.endswith(('.js', '.ts', '.py', '.jsx', '.tsx', '.rs', '.md')):
             file_path = os.path.join(root, file)
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -80,6 +80,8 @@ for root, dirs, files in os.walk(full_repo_dir):
                     language = 'typescript'
                 elif file.endswith('.rs'):
                     language = 'rust'
+                elif file.endswith('.md'):
+                    language = 'markdown'
                 else:
                     language = 'text'
                 
