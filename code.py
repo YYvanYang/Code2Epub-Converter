@@ -11,11 +11,21 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Function to ensure 'repo' directory exists
+def ensure_repo_dir_exists():
+    repo_dir = 'repo'
+    if not os.path.exists(repo_dir):
+        os.makedirs(repo_dir)
+
+
 # Function to clone a GitHub repository
 def clone_github_repo(repo_url, local_dir):
-    if os.path.exists(local_dir):
-        subprocess.run(['rm', '-rf', local_dir], check=True)
-    subprocess.run(['git', 'clone', repo_url, local_dir], check=True)
+    ensure_repo_dir_exists()  # Ensure the 'repo' directory exists
+    full_path = os.path.join('repo', local_dir)
+    if os.path.exists(full_path):
+        subprocess.run(['rm', '-rf', full_path], check=True)
+    subprocess.run(['git', 'clone', repo_url, full_path], check=True)
+    return full_path
 
 # Extract repository name and author from URL
 def extract_repo_details(repo_url):
@@ -36,7 +46,7 @@ repo_name, author = extract_repo_details(repo_url)
 local_dir = repo_name
 
 # Clone the GitHub repository
-clone_github_repo(repo_url, local_dir)
+full_repo_dir = clone_github_repo(repo_url, local_dir)
 
 # Create an EPUB book
 book = epub.EpubBook()
@@ -54,7 +64,7 @@ chapters = []
 code_css = None
 
 # Walk through the directory and process files
-for root, dirs, files in os.walk(local_dir):
+for root, dirs, files in os.walk(full_repo_dir):
     for file in files:
         if file.endswith(('.js', '.ts', '.py', '.jsx', '.tsx')):
             file_path = os.path.join(root, file)
