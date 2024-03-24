@@ -88,19 +88,30 @@ for root, dirs, files in os.walk(full_repo_dir):
                 # Save the CSS for code highlighting
                 if not code_css:
                     code_css = css
+
+                # Generate a unique file name based on the file's relative path to the repo root
+                relative_path = os.path.relpath(file_path, start=full_repo_dir)
+                unique_file_name = relative_path.replace(os.path.sep, '_').replace(' ', '_')
+                # Replace characters not allowed in file names
+                unique_file_name = "".join([c for c in unique_file_name if c.isalpha() or c.isdigit() or c in ['_', '.']])
                 
+                # Use the relative path as the chapter title for the TOC
+                chapter_title = relative_path.replace('_', ' ').replace('/', ' > ')
+                        
                 # Create a chapter
                 chapter_content = f'<h1>{file}</h1><style>{css}</style>{highlighted_code}'
-                chapter = epub.EpubHtml(title=file, file_name=file + '.xhtml', lang='en')
+                chapter = epub.EpubHtml(title=chapter_title, file_name=unique_file_name + '.xhtml', lang='en')
                 chapter.content = chapter_content
                 book.add_item(chapter)
-                
+                        
                 # Add the chapter to the chapters list
-                chapters.append(chapter)
+                chapters.append((chapter_title, chapter))
 
 # Define the spine and TOC using the chapters list
-book.spine = ['nav'] + chapters
-book.toc = [(epub.Section('Chapters'), chapters)]
+book.spine = ['nav'] + [chapter for _, chapter in chapters]
+book.toc = [(epub.Section('Chapters'), [chapter for _, chapter in chapters])]
+
+
 
 # Add default NCX and cover
 book.add_item(epub.EpubNcx())
