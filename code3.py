@@ -1,64 +1,85 @@
 import os
 import subprocess
 from ebooklib import epub
-import html
+from pygments import highlight
+from pygments.lexers import get_lexer_by_name
+from pygments.formatters import HtmlFormatter
 
-# 克隆GitHub仓库的函数
+# Function to clone a GitHub repository
 def clone_github_repo(repo_url, local_dir):
     if os.path.exists(local_dir):
-        # 如果目录已存在，先删除
         subprocess.run(['rm', '-rf', local_dir], check=True)
-    # 克隆仓库
     subprocess.run(['git', 'clone', repo_url, local_dir], check=True)
 
-# 从文件扩展名获取media_type
-def get_media_type(filename):
-    if filename.endswith('.js') or filename.endswith('.jsx'):
-        return 'application/javascript'
-    elif filename.endswith('.ts') or filename.endswith('.tsx'):
-        return 'application/typescript'
-    elif filename.endswith('.py'):
-        return 'text/x-python'
-    else:
-        return 'text/plain'
+# Function to apply syntax highlighting to code
+def highlight_code(code, language):
+    lexer = get_lexer_by_name(language, stripall=True)
+    formatter = HtmlFormatter(linenos=True, cssclass="source")
+    return highlight(code, lexer, formatter), formatter.get_style_defs('.source')
 
-# 克隆仓库
+# Clone the GitHub repository
 repo_url = 'https://github.com/YYvanYang/ai-gateway-openai-wrapper.git'
 local_dir = 'repo'
 clone_github_repo(repo_url, local_dir)
 
+# Create an EPUB book
 book = epub.EpubBook()
 
-# 书籍元数据
+# Set metadata
 book.set_identifier('id123456')
-book.set_title('ai-gateway-openai-wrapper')  # 仓库名作为书名
+book.set_title('Your Book Title')
 book.set_language('en')
+book.add_author('Author Name')
 
-book.add_author('YYvanYang')  # 仓库作者作为书籍作者
+# Initialize a list to store chapters
+chapters = []
 
-# 创建CSS样式
-css = epub.EpubItem(uid="style_default", file_name="style/default.css", media_type="text/css", content="body { font-family: Times, serif; margin: 20px; }")
-book.add_item(css)
+# Initialize a variable to store CSS for code highlighting
+code_css = None
 
-# 遍历repo目录，为支持的文件创建章节
+# Walk through the directory and process files
 for root, dirs, files in os.walk(local_dir):
     for file in files:
         if file.endswith(('.js', '.ts', '.py', '.jsx', '.tsx')):
             file_path = os.path.join(root, file)
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                # 转义HTML特殊字符
-                content_escaped = html.escape(content)
-                # 创建章节
-                chapter = epub.EpubHtml(title=file, file_name=file + '.xhtml', lang='en')
-                chapter.content = f'<h1>{file}</h1><pre><code>{content_escaped}</code></pre>'
-                chapter.add_item(css)
-                book.add_item(chapter)
-                book.spine.append(chapter)
 
-# 添加默认的NCX和封面
+                # Determine the programming language
+                if file.endswith('.py'):
+                    language = 'python'
+                elif file.endswith(('.js', '.jsx')):
+                    language = 'javascript'
+                elif file.endswith(('.ts', '.tsx')):
+                    language = 'typescript'
+                else:
+                    language = 'text'
+                
+                highlighted_code, css = highlight_code(content, language)
+                
+                # Save the CSS for code highlighting
+                if not code_css:
+                    code_css = css
+                
+                # Create a chapter
+                chapter = epub.EpubHtml(title=file, file_name=file + '.xhtml', lang='en')
+                chapter.content = f'<h1>{file}</h1>{highlighted_code}'
+                book.add_item(chapter)
+                
+                # Add the chapter to the chapters list
+                chapters.append(chapter)
+
+# Add the CSS for code highlighting to the book
+style_code = epub.EpubItem(uid="style_code", file_name="style/code.css", media_type="text/css", content=code_css)
+book.add_item(style_code)
+
+# Define the spine and TOC using the chapters list
+book.spine = ['nav'] + chapters
+book.toc = [(epub.Section('Chapters'), chapters)]
+
+# Add default NCX and cover
 book.add_item(epub.EpubNcx())
 book.add_item(epub.EpubNav())
 
-# 生成EPUB文件
-epub.write_epub('test.epub', book, {})
+# Write the EPUB file
+epub.write_epub('your_book.epub', book, {})
