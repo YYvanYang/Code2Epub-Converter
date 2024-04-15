@@ -1,0 +1,14 @@
+macOS
+在macOS上，你可以使用Homebrew来安装这些依赖项。首先，确保你安装了Homebrew。如果没有安装，可以在终端中运行以下命令来安装：
+
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+安装完成后，你可以使用Homebrew安装WeasyPrint的依赖项：
+
+brew install cairo pango gdk-pixbuf libffi
+对于gobject-2.0-0的具体问题，确保你安装了glib和pygobject3：
+
+brew install glib
+brew install pygobject3
+安装这些依赖项后，重新尝试运行你的脚本。如果仍然有问题，可能需要设置一些环境变量来指定库的位置，或者检查你的Python环境是否正确配置了这些库的路径。
+
+pip install WeasyPrint PyMuPDF
