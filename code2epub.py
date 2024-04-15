@@ -2,6 +2,8 @@ import os
 import subprocess
 import random
 import time
+import fitz  # PyMuPDF
+from weasyprint import HTML
 from ebooklib import epub
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
@@ -33,6 +35,35 @@ def extract_repo_details(repo_url):
     repo_name = parts[-1].replace('.git', '')
     author = parts[-2] if len(parts) > 1 else 'Unknown Author'
     return repo_name, author
+
+def create_pdf_with_toc(chapters, file_name):
+    # 第一步: 生成初始的PDF，此时不考虑目录
+    html_content = "<html><body>"
+    for title, content in chapters:
+        html_content += f"<h1 id='{title}'>{title}</h1>{content}"
+    html_content += "</body></html>"
+    HTML(string=html_content).write_pdf("initial.pdf")
+
+    # 第二步: 分析PDF以确定章节的页面编号
+    doc = fitz.open("initial.pdf")
+    toc = []  # 目录列表，包含章节标题和页码
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        text = page.get_text("text")
+        for title, _ in chapters:
+            if title in text:
+                toc.append((title, page_num + 1))  # 页面编号从1开始
+                break  # 假设每页只有一个标题
+    doc.close()
+
+    # 第三步: 生成包含目录的最终PDF
+    toc_html = "<h1>Table of Contents</h1><ul>"
+    for title, page in toc:
+        toc_html += f"<li>{title} - Page {page}</li>"
+    toc_html += "</ul>"
+    final_html_content = html_content.replace("<body>", f"<body>{toc_html}")
+    HTML(string=final_html_content).write_pdf(file_name)
+
 
 # Function to apply syntax highlighting to code
 def highlight_code(code, language):
@@ -114,7 +145,6 @@ book.spine = ['nav'] + [chapter for _, chapter in chapters]
 book.toc = [(epub.Section('Chapters'), [chapter for _, chapter in chapters])]
 
 
-
 # Add default NCX and cover
 book.add_item(epub.EpubNcx())
 book.add_item(epub.EpubNav())
@@ -129,3 +159,13 @@ epub.write_epub(book_file_name, book, {})
 # Print the generated book name and local path
 print(f'Generated book: {book_file_name}')
 print(f'Local path: {os.path.abspath(book_file_name)}')
+
+# Generate PDF file name with timestamp
+pdf_file_name = f'{repo_name}_{timestamp}.pdf'
+
+# Call the function to create a PDF with WeasyPrint
+create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_file_name)
+
+print(f'Generated PDF: {pdf_file_name}')
+print(f'Local path: {os.path.abspath(pdf_file_name)}')
+
