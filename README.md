@@ -1,61 +1,53 @@
-# Code2Epub Converter
+# Code to Ebook Converter
 
-## 简介
+This project allows you to convert a GitHub repository containing code files into an EPUB and PDF ebook.
 
-Code2Epub Converter 是一个用于将代码仓库转换成 EPUB 格式电子书的工具。它可以遍历指定的代码仓库，将代码文件转换为 EPUB 格式的章节，方便在支持 EPUB 格式的电子书阅读器上阅读和查看代码。
+## Features
 
-## 安装
+- Downloads a GitHub repository and extracts the code files
+- Applies syntax highlighting to the code using Pygments library
+- Generates an EPUB ebook with a table of contents
+- Generates a PDF ebook with a table of contents and page numbers
 
-本项目依赖于 Python 3 和一些第三方库。在开始之前，请确保您的系统已经安装了 Python 3（推荐 Python 3.6 或更高版本）。
+## Requirements
 
-### 安装 Python 3
+- Python 3.7+
+- Required Python packages (see `requirements.txt`)
 
-请访问 [Python 官网](https://www.python.org/) 下载并安装适合您操作系统的 Python 3 版本。
+## Installation
 
-### 安装依赖
+1. Clone this repository:
 
-本项目依赖于以下库：
+   ```
+   git clone https://github.com/yourusername/code-to-ebook.git
+   ```
 
-- `ebooklib`: 用于生成 EPUB 文件。
-- `pygments`: 用于代码高亮。
-- `python-dotenv`: 用于从 `.env` 文件加载环境变量。
+2. Install the required Python packages:
+   ```
+   pip install -r requirements.txt
+   ```
 
-您可以通过以下命令安装这些依赖：
+## Usage
 
-```bash
-pip install ebooklib pygments python-dotenv pymupdf weasyprint
-```
+1. Configure the `config.ini` file with your desired settings:
 
-## 配置
+   - Set the `repo_url` to the GitHub repository you want to convert
+   - Adjust other settings as needed
 
-1. 在项目根目录下创建一个 `.env` 文件，并配置您的代码仓库路径。例如：
+2. Run the script:
 
-```env
-REPO_URL=https://your-repository-url-here.git
-```
+   ```
+   python code2epub.py
+   ```
 
-请将 `https://your-repository-url-here.git` 替换为您的代码仓库的实际 URL。
+   You can also provide command-line arguments to override the configuration:
 
-## 使用方法
+   ```
+   python code2epub.py --repo-url https://github.com/user/repo --output-dir ./ebooks --log-level DEBUG
+   ```
 
-1. 确保您已经在 `.env` 文件中正确配置了仓库 URL。
-2. 运行 Code2Epub Converter。脚本会读取 `.env` 文件中的 `REPO_URL`，克隆仓库并开始转换过程。
+3. The generated EPUB and PDF files will be saved in the specified output directory.
 
-```bash
-python code2epub.py
-```
+## License
 
-## 功能特点
-
-- **代码高亮**：利用 `pygments` 实现代码高亮，使代码更易读。
-- **自动目录生成**：根据代码仓库的结构自动生成 EPUB 的目录，方便快速导航。
-- **文件名冲突处理**：通过将文件路径转换为唯一文件名来避免文件名冲突。
-- **环境变量支持**：支持从 `.env` 文件加载配置，简化配置过程。
-
-## 贡献
-
-欢迎通过 GitHub Pull Requests 或 Issues 提交贡献或反馈。
-
-## 许可证
-
-本项目采用 MIT 许可证。有关详细信息，请查看 `LICENSE` 文件。
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

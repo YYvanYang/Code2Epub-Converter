@@ -1,0 +1,10 @@
+beautifulsoup4==4.11.2
+ebooklib==0.18
+fitz==0.0.1.dev2
+Pygments==2.15.1
+python-dotenv==1.0.0
+PyMuPDF==1.21.1
+pytest==7.3.1
+requests==2.30.0
+tqdm==4.65.0
+WeasyPrint==58.0

@@ -2,169 +2,341 @@ import os
 import subprocess
 import random
 import time
+import logging
 import fitz
+import tempfile
+import multiprocessing
+import pickle
+import importlib.util
 from weasyprint import HTML
 from ebooklib import epub
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
-from dotenv import load_dotenv
+from tqdm import tqdm
+import argparse
+import configparser
+import sys
 
-# Load environment variables from .env file
-load_dotenv()
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Function to ensure 'repo' directory exists
-def ensure_repo_dir_exists():
-    repo_dir = 'repo'
-    if not os.path.exists(repo_dir):
-        os.makedirs(repo_dir)
+class CodeToEbook:
+    def __init__(self, repo_url, output_dir, file_name_format, supported_extensions):
+        self.repo_url = repo_url
+        self.output_dir = output_dir
+        self.file_name_format = file_name_format
+        self.supported_extensions = supported_extensions
+        self.repo_name, self.author = self.extract_repo_details()
+        self.full_repo_dir = self.clone_github_repo()
 
+    def extract_repo_details(self):
+        parts = self.repo_url.split('/')
+        repo_name = parts[-1].replace('.git', '')
+        author = parts[-2] if len(parts) > 1 else 'Unknown Author'
+        return repo_name, author
 
-# Function to clone a GitHub repository
-def clone_github_repo(repo_url, local_dir):
-    ensure_repo_dir_exists()  # Ensure the 'repo' directory exists
-    full_path = os.path.join('repo', local_dir)
-    if os.path.exists(full_path):
-        subprocess.run(['rm', '-rf', full_path], check=True)
-    subprocess.run(['git', 'clone', '--depth', '1', repo_url, full_path], check=True)
-    return full_path
+    def clone_github_repo(self):
+        repo_dir = 'repo'
+        if not os.path.exists(repo_dir):
+            os.makedirs(repo_dir)
+        full_path = os.path.join(repo_dir, self.repo_name)
+        if os.path.exists(full_path):
+            subprocess.run(['rm', '-rf', full_path], check=True)
+        try:
+            subprocess.run(['git', 'clone', '--depth', '1', self.repo_url, full_path], check=True)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to clone repository: {e}")
+            logger.error(f"Error output: {e.output}")
+            sys.exit(1)
+        return full_path
 
-# Extract repository name and author from URL
-def extract_repo_details(repo_url):
-    parts = repo_url.split('/')
-    repo_name = parts[-1].replace('.git', '')
-    author = parts[-2] if len(parts) > 1 else 'Unknown Author'
-    return repo_name, author
+    def process_files(self, file_list, chapters, code_css):
+        with multiprocessing.Pool() as pool:
+            results = []
+            for file_path in file_list:
+                result = pool.apply_async(process_file, (file_path, self.full_repo_dir, chapters, code_css))
+                results.append(result)
+
+            for result in results:
+                chapters, code_css = result.get()
+
+        return chapters, code_css
+
+    def create_epub(self, chapters, code_css):
+        book = epub.EpubBook()
+        book.set_identifier(str(random.randint(10000, 99999)))
+        book.set_title(self.repo_name)
+        book.set_language('en')
+        book.add_author(self.author)
+
+        for title, chapter in chapters:
+            book.add_item(chapter)
+
+        book.spine = ['nav'] + [chapter for _, chapter in chapters]
+        book.toc = [(epub.Section('Chapters'), [chapter for _, chapter in chapters])]
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+
+        timestamp = time.strftime('%Y%m%d%H%M%S')
+        book_file_name = os.path.join(self.output_dir, self.file_name_format.format(repo_name=self.repo_name, timestamp=timestamp) + '.epub')
+
+        try:
+            epub.write_epub(book_file_name, book, {})
+        except IOError as e:
+            logger.error(f"Failed to write EPUB file: {e}")
+            sys.exit(1)
+
+        logger.info(f'Generated EPUB: {book_file_name}')
+        logger.info(f'Local path: {os.path.abspath(book_file_name)}')
+
+    def create_pdf(self, chapters):
+        timestamp = time.strftime('%Y%m%d%H%M%S')
+        pdf_file_name = os.path.join(self.output_dir, self.file_name_format.format(repo_name=self.repo_name, timestamp=timestamp) + '.pdf')
+
+        try:
+            create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_file_name)
+        except Exception as e:
+            logger.error(f"Failed to generate PDF: {e}")
+            sys.exit(1)
+
+        logger.info(f'Generated PDF: {pdf_file_name}')
+        logger.info(f'Local path: {os.path.abspath(pdf_file_name)}')
+
+    def convert(self):
+        self.load_plugins()
+
+        last_conversion_time = self.load_last_conversion_time()
+
+        file_list = []
+        for root, dirs, files in os.walk(self.full_repo_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if any(file.endswith(ext) for ext in self.supported_extensions):
+                    if os.path.getmtime(file_path) > last_conversion_time:
+                        file_list.append(file_path)
+
+        if self.highlighter_plugin:
+            chapters, code_css = self.highlighter_plugin.highlight_chapters(file_list)
+        else:
+            chapters, code_css = self.process_files(file_list, [], '')
+
+        if self.ebook_format_plugin:
+            self.ebook_format_plugin.create_ebook(chapters, code_css, self.repo_name, self.output_dir, self.file_name_format)
+        else:
+            self.create_epub(chapters, code_css)
+            self.create_pdf(chapters)
+
+        self.save_last_conversion_time()
+
+    def load_last_conversion_time(self):
+        timestamp_file = f'{self.repo_name}_last_conversion.pickle'
+        if os.path.exists(timestamp_file):
+            with open(timestamp_file, 'rb') as f:
+                return pickle.load(f)
+        return 0
+
+    def save_last_conversion_time(self):
+        timestamp_file = f'{self.repo_name}_last_conversion.pickle'
+        with open(timestamp_file, 'wb') as f:
+            pickle.dump(time.time(), f)
+
+    def load_plugins(self):
+        self.highlighter_plugin = None
+        self.ebook_format_plugin = None
+
+        # Load code highlighter plugin
+        highlighter_plugin_path = os.path.join('plugins', 'highlighter.py')
+        if os.path.exists(highlighter_plugin_path):
+            spec = importlib.util.spec_from_file_location('highlighter', highlighter_plugin_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            self.highlighter_plugin = module.CustomHighlighter()
+
+        # Load ebook format plugin
+        ebook_format_plugin_path = os.path.join('plugins', 'ebook_format.py')
+        if os.path.exists(ebook_format_plugin_path):
+            spec = importlib.util.spec_from_file_location('ebook_format', ebook_format_plugin_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            self.ebook_format_plugin = module.CustomEbookFormat()
+
+def process_file(file_path, full_repo_dir, chapters, code_css):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except IOError as e:
+        logger.warning(f"Failed to read file: {file_path}. Skipping...")
+        return chapters, code_css
+
+    # Determine the programming language
+    if file_path.endswith('.py'):
+        language = 'python'
+    elif file_path.endswith(('.js', '.jsx')):
+        language = 'javascript'
+    elif file_path.endswith(('.ts', '.tsx')):
+        language = 'typescript'
+    elif file_path.endswith('.rs'):
+        language = 'rust'
+    elif file_path.endswith('.md'):
+        language = 'markdown'
+    else:
+        language = 'text'
+
+    try:
+        highlighted_code, css = highlight_code(content, language)
+    except Exception as e:
+        logger.warning(f"Failed to highlight code for file: {file_path}. Using plain text.")
+        highlighted_code, css = content, ''
+
+    # Save the CSS for code highlighting
+    if not code_css:
+        code_css = css
+
+    # Generate a unique file name based on the file's relative path to the repo root
+    relative_path = os.path.relpath(file_path, start=full_repo_dir)
+    unique_file_name = relative_path.replace(os.path.sep, '_').replace(' ', '_')
+    # Replace characters not allowed in file names
+    unique_file_name = "".join([c for c in unique_file_name if c.isalpha() or c.isdigit() or c in ['_', '.']])
+
+    # Use the relative path as the chapter title for the TOC
+    chapter_title = relative_path.replace('_', ' ').replace('/', ' > ')
+
+    # Create a chapter
+    chapter_content = f'<h1>{os.path.basename(file_path)}</h1><style>{css}</style>{highlighted_code}'
+    chapter = epub.EpubHtml(title=chapter_title, file_name=unique_file_name + '.xhtml', lang='en')
+    chapter.content = chapter_content
+
+    # Add the chapter to the chapters list
+    chapters.append((chapter_title, chapter))
+
+    return chapters, code_css
 
 def create_pdf_with_toc(chapters, file_name):
-    # 第一步: 生成初始的PDF，此时不考虑目录
+    """
+    Create a PDF file with a table of contents.
+
+    Args:
+        chapters (list[tuple[str, str]]): A list of tuples containing chapter titles and content.
+        file_name (str): The output file name for the PDF.
+
+    The function generates a PDF file in three steps:
+    1. Generate an initial PDF without a table of contents.
+    2. Analyze the initial PDF to determine page numbers for each chapter.
+    3. Generate the final PDF with a table of contents using the page numbers.
+
+    The table of contents is generated by extracting the chapter titles from the initial PDF
+    and associating them with the corresponding page numbers.
+
+    The function uses WeasyPrint library to generate the PDF files.
+    """
+    # Step 1: Generate initial PDF without table of contents
     html_content = "<html><body>"
     for title, content in chapters:
         html_content += f"<h1 id='{title}'>{title}</h1>{content}"
     html_content += "</body></html>"
-    HTML(string=html_content).write_pdf("initial.pdf")
 
-    # 第二步: 分析PDF以确定章节的页面编号
-    doc = fitz.open("initial.pdf")
-    toc = []  # 目录列表，包含章节标题和页码
-    for page_num in range(len(doc)):
-        page = doc.load_page(page_num)
-        text = page.get_text("text")
-        for title, _ in chapters:
-            if title in text:
-                toc.append((title, page_num + 1))  # 页面编号从1开始
-                break  # 假设每页只有一个标题
-    doc.close()
+    # Create a temporary file for the initial PDF
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
+        initial_pdf_path = temp_pdf.name
 
-    # 第三步: 生成包含目录的最终PDF
+    try:
+        HTML(string=html_content).write_pdf(initial_pdf_path)
+    except Exception as e:
+        logger.error(f"Failed to generate initial PDF: {e}")
+        logger.error(f"Error details: {str(e)}")
+        sys.exit(1)
+
+    # Step 2: Analyze PDF to determine page numbers for chapters
+    try:
+        doc = fitz.open(initial_pdf_path)
+        toc = []
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            text = page.get_text("text")
+            for title, _ in chapters:
+                if title in text:
+                    toc.append((title, page_num + 1))
+                    break
+        doc.close()
+    except fitz.FileDataError as e:
+        logger.error(f"Failed to open PDF file: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Failed to analyze PDF: {e}")
+        sys.exit(1)
+    finally:
+        # Remove the temporary initial PDF file
+        os.unlink(initial_pdf_path)
+
+    # Step 3: Generate final PDF with table of contents
     toc_html = "<h1>Table of Contents</h1><ul>"
     for title, page in toc:
         toc_html += f"<li>{title} - Page {page}</li>"
     toc_html += "</ul>"
     final_html_content = html_content.replace("<body>", f"<body>{toc_html}")
-    HTML(string=final_html_content).write_pdf(file_name)
+    try:
+        HTML(string=final_html_content).write_pdf(file_name)
+    except Exception as e:
+        logger.error(f"Failed to generate final PDF: {e}")
+        logger.error(f"Error details: {str(e)}")
+        sys.exit(1)
 
-
-# Function to apply syntax highlighting to code
 def highlight_code(code, language):
+    """
+    Apply syntax highlighting to the provided code using Pygments library.
+
+    Args:
+        code (str): The code to be highlighted.
+        language (str): The programming language of the code.
+
+    Returns:
+        tuple[str, str]: A tuple containing the highlighted code and CSS styles.
+
+    The function uses Pygments library to apply syntax highlighting to the code.
+    It determines the appropriate lexer based on the provided language and uses
+    the HtmlFormatter to generate the highlighted code and CSS styles.
+
+    The highlighted code is returned as an HTML-formatted string, and the CSS styles
+    are returned separately to be included in the generated EPUB or PDF file.
+    """
     lexer = get_lexer_by_name(language, stripall=True)
     formatter = HtmlFormatter(linenos='inline', cssclass="source", style='friendly')
     return highlight(code, lexer, formatter), formatter.get_style_defs('.source')
 
-# Main script
-repo_url = os.getenv('REPO_URL')
-repo_name, author = extract_repo_details(repo_url)
-local_dir = repo_name
+def main():
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description='Convert GitHub repository to EPUB and PDF')
+    parser.add_argument('--repo-url', type=str, help='GitHub repository URL')
+    parser.add_argument('--output-dir', type=str, default='.', help='Output directory for generated files')
+    parser.add_argument('--file-name-format', type=str, default='{repo_name}_{timestamp}', help='Format for output file names')
+    parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], help='Logging level')
 
-# Clone the GitHub repository
-full_repo_dir = clone_github_repo(repo_url, local_dir)
+    # 解析命令行参数
+    args = parser.parse_args()
 
-# Create an EPUB book
-book = epub.EpubBook()
+    # 读取配置文件
+    config = configparser.ConfigParser()
+    config.read('config.ini')
 
-# Set dynamic metadata
-book.set_identifier(str(random.randint(10000, 99999)))
-book.set_title(repo_name)
-book.set_language('en')
-book.add_author(author)
+    # 优先使用命令行参数,如果未提供则使用配置文件中的值
+    repo_url = args.repo_url or config.get('github', 'repo_url')
+    output_dir = args.output_dir
+    file_name_format = args.file_name_format or config.get('output', 'file_name_format')
+    supported_extensions = config.get('output', 'supported_extensions').split(',')
+    log_level = args.log_level or config.get('logging', 'level')
 
-# Initialize a list to store chapters
-chapters = []
+    # 配置日志级别
+    logging.basicConfig(level=getattr(logging, log_level))
 
-# Initialize a variable to store CSS for code highlighting
-code_css = None
+    if len(sys.argv) > 1 and sys.argv[1] == 'test':
+        # Run tests using pytest
+        import pytest
+        pytest.main(['-v', 'tests'])
+    else:
+        converter = CodeToEbook(repo_url, output_dir, file_name_format, supported_extensions)
+        converter.convert()
 
-# Walk through the directory and process files
-for root, dirs, files in os.walk(full_repo_dir):
-    for file in files:
-        if file.endswith(('.js', '.ts', '.py', '.jsx', '.tsx', '.rs', '.md')):
-            file_path = os.path.join(root, file)
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-                # Determine the programming language
-                if file.endswith('.py'):
-                    language = 'python'
-                elif file.endswith(('.js', '.jsx')):
-                    language = 'javascript'
-                elif file.endswith(('.ts', '.tsx')):
-                    language = 'typescript'
-                elif file.endswith('.rs'):
-                    language = 'rust'
-                elif file.endswith('.md'):
-                    language = 'markdown'
-                else:
-                    language = 'text'
-
-                highlighted_code, css = highlight_code(content, language)
-
-                # Save the CSS for code highlighting
-                if not code_css:
-                    code_css = css
-
-                # Generate a unique file name based on the file's relative path to the repo root
-                relative_path = os.path.relpath(file_path, start=full_repo_dir)
-                unique_file_name = relative_path.replace(os.path.sep, '_').replace(' ', '_')
-                # Replace characters not allowed in file names
-                unique_file_name = "".join([c for c in unique_file_name if c.isalpha() or c.isdigit() or c in ['_', '.']])
-
-                # Use the relative path as the chapter title for the TOC
-                chapter_title = relative_path.replace('_', ' ').replace('/', ' > ')
-
-                # Create a chapter
-                chapter_content = f'<h1>{file}</h1><style>{css}</style>{highlighted_code}'
-                chapter = epub.EpubHtml(title=chapter_title, file_name=unique_file_name + '.xhtml', lang='en')
-                chapter.content = chapter_content
-                book.add_item(chapter)
-
-                # Add the chapter to the chapters list
-                chapters.append((chapter_title, chapter))
-
-# Define the spine and TOC using the chapters list
-book.spine = ['nav'] + [chapter for _, chapter in chapters]
-book.toc = [(epub.Section('Chapters'), [chapter for _, chapter in chapters])]
-
-
-# Add default NCX and cover
-book.add_item(epub.EpubNcx())
-book.add_item(epub.EpubNav())
-
-# Generate book file name with timestamp
-timestamp = time.strftime('%Y%m%d%H%M%S')
-book_file_name = f'{repo_name}_{timestamp}.epub'
-
-# Write the EPUB file
-epub.write_epub(book_file_name, book, {})
-
-# Print the generated book name and local path
-print(f'Generated book: {book_file_name}')
-print(f'Local path: {os.path.abspath(book_file_name)}')
-
-# Generate PDF file name with timestamp
-pdf_file_name = f'{repo_name}_{timestamp}.pdf'
-
-# Call the function to create a PDF with WeasyPrint
-create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_file_name)
-
-print(f'Generated PDF: {pdf_file_name}')
-print(f'Local path: {os.path.abspath(pdf_file_name)}')
+if __name__ == '__main__':
+    main()
