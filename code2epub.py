@@ -26,7 +26,7 @@ def clone_github_repo(repo_url, local_dir):
     full_path = os.path.join('repo', local_dir)
     if os.path.exists(full_path):
         subprocess.run(['rm', '-rf', full_path], check=True)
-    subprocess.run(['git', 'clone', repo_url, full_path], check=True)
+    subprocess.run(['git', 'clone', '--depth', '1', repo_url, full_path], check=True)
     return full_path
 
 # Extract repository name and author from URL
