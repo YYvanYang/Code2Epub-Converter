@@ -8,7 +8,7 @@ import tempfile
 import multiprocessing
 import pickle
 import importlib.util
-from weasyprint import HTML
+from weasyprint import HTML, CSS
 from ebooklib import epub
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
