@@ -23,7 +23,7 @@ Code2Epub Converter 是一个用于将代码仓库转换成 EPUB 格式电子书
 您可以通过以下命令安装这些依赖：
 
 ```bash
-pip install ebooklib pygments python-dotenv
+pip install ebooklib pygments python-dotenv pymupdf weasyprint
 ```
 
 ## 配置
