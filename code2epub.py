@@ -2,7 +2,7 @@ import os
 import subprocess
 import random
 import time
-import fitz  # PyMuPDF
+import fitz
 from weasyprint import HTML
 from ebooklib import epub
 from pygments import highlight
@@ -115,9 +115,9 @@ for root, dirs, files in os.walk(full_repo_dir):
                     language = 'markdown'
                 else:
                     language = 'text'
-                
+
                 highlighted_code, css = highlight_code(content, language)
-                
+
                 # Save the CSS for code highlighting
                 if not code_css:
                     code_css = css
@@ -127,16 +127,16 @@ for root, dirs, files in os.walk(full_repo_dir):
                 unique_file_name = relative_path.replace(os.path.sep, '_').replace(' ', '_')
                 # Replace characters not allowed in file names
                 unique_file_name = "".join([c for c in unique_file_name if c.isalpha() or c.isdigit() or c in ['_', '.']])
-                
+
                 # Use the relative path as the chapter title for the TOC
                 chapter_title = relative_path.replace('_', ' ').replace('/', ' > ')
-                        
+
                 # Create a chapter
                 chapter_content = f'<h1>{file}</h1><style>{css}</style>{highlighted_code}'
                 chapter = epub.EpubHtml(title=chapter_title, file_name=unique_file_name + '.xhtml', lang='en')
                 chapter.content = chapter_content
                 book.add_item(chapter)
-                        
+
                 # Add the chapter to the chapters list
                 chapters.append((chapter_title, chapter))
 
@@ -168,4 +168,3 @@ create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], p
 
 print(f'Generated PDF: {pdf_file_name}')
 print(f'Local path: {os.path.abspath(pdf_file_name)}')
-

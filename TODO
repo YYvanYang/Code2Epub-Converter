@@ -12,3 +12,10 @@ brew install pygobject3
 安装这些依赖项后，重新尝试运行你的脚本。如果仍然有问题，可能需要设置一些环境变量来指定库的位置，或者检查你的Python环境是否正确配置了这些库的路径。
 
 pip install WeasyPrint PyMuPDF
+
+```
+OSError: cannot load library 'gobject-2.0-0': dlopen(gobject-2.0-0, 0x0002): tried: 'gobject-2.0-0' (no such file), '/System/Volumes/Preboot/Cryptexes/OSgobject-2.0-0' (no such file), '/usr/lib/gobject-2.0-0' (no such file, not in dyld cache), 'gobject-2.0-0' (no such file), '/usr/lib/gobject-2.0-0' (no such file, not in dyld cache).  Additionally, ctypes.util.find_library() did not manage to locate a library called 'gobject-2.0-0'
+```
+
+solution:
+https://github.com/Kozea/WeasyPrint/issues/1448#issuecomment-925549118
