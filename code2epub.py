@@ -6,14 +6,12 @@ import logging
 import fitz
 import tempfile
 import multiprocessing
-import pickle
 import importlib.util
 from weasyprint import HTML, CSS
 from ebooklib import epub
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
-from tqdm import tqdm
 import argparse
 import configparser
 import sys
@@ -107,15 +105,12 @@ class CodeToEbook:
     def convert(self):
         self.load_plugins()
 
-        last_conversion_time = self.load_last_conversion_time()
-
         file_list = []
         for root, dirs, files in os.walk(self.full_repo_dir):
             for file in files:
                 file_path = os.path.join(root, file)
                 if any(file.endswith(ext) for ext in self.supported_extensions):
-                    if os.path.getmtime(file_path) > last_conversion_time:
-                        file_list.append(file_path)
+                    file_list.append(file_path)
 
         if self.highlighter_plugin:
             chapters, code_css = self.highlighter_plugin.highlight_chapters(file_list)
@@ -127,20 +122,6 @@ class CodeToEbook:
         else:
             self.create_epub(chapters, code_css)
             self.create_pdf(chapters)
-
-        self.save_last_conversion_time()
-
-    def load_last_conversion_time(self):
-        timestamp_file = f'{self.repo_name}_last_conversion.pickle'
-        if os.path.exists(timestamp_file):
-            with open(timestamp_file, 'rb') as f:
-                return pickle.load(f)
-        return 0
-
-    def save_last_conversion_time(self):
-        timestamp_file = f'{self.repo_name}_last_conversion.pickle'
-        with open(timestamp_file, 'wb') as f:
-            pickle.dump(time.time(), f)
 
     def load_plugins(self):
         self.highlighter_plugin = None

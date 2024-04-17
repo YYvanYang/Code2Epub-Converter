@@ -5,5 +5,4 @@ Pygments==2.15.1
 PyMuPDF==1.21.1
 pytest==7.3.1
 requests==2.30.0
-tqdm==4.65.0
 WeasyPrint==58.0
