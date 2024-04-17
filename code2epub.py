@@ -1,34 +1,37 @@
 import os
 import subprocess
+import sys
 import random
 import time
 import logging
 import fitz
 import tempfile
+import configparser
 from weasyprint import HTML
 from ebooklib import epub
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
-from dotenv import load_dotenv
 from tqdm import tqdm
 
-# Load environment variables from .env file
-load_dotenv()
+# Read the configuration file
+config = configparser.ConfigParser()
+config.read('config.ini')
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging level from the config file
+logging_level = config.get('logging', 'level')
+logging.basicConfig(level=logging_level, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def ensure_repo_dir_exists(repo_dir: str) -> None:
+def ensure_output_dir_exists(output_dir: str) -> None:
     """
-    Ensure the repository directory exists.
+    Ensure the output directory exists.
 
     Args:
-        repo_dir (str): The repository directory path.
+        output_dir (str): The output directory path.
     """
-    if not os.path.exists(repo_dir):
-        os.makedirs(repo_dir)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
 def clone_github_repo(repo_url: str, local_dir: str) -> str:
     """
@@ -41,15 +44,15 @@ def clone_github_repo(repo_url: str, local_dir: str) -> str:
     Returns:
         str: The full path of the cloned repository.
     """
-    ensure_repo_dir_exists('repo')
+    ensure_output_dir_exists('repo')
     full_path = os.path.join('repo', local_dir)
     if os.path.exists(full_path):
         subprocess.run(['rm', '-rf', full_path], check=True)
     try:
         subprocess.run(['git', 'clone', '--depth', '1', repo_url, full_path], check=True)
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to clone repository: {e}")
-        raise
+        logger.error(f"Failed to clone repository: {repo_url}. Error: {str(e)}")
+        sys.exit(1)
     return full_path
 
 def extract_repo_details(repo_url: str) -> tuple[str, str]:
@@ -88,8 +91,8 @@ def create_pdf_with_toc(chapters: list[tuple[str, str]], file_name: str) -> None
     try:
         HTML(string=html_content).write_pdf(initial_pdf_path)
     except Exception as e:
-        logger.error(f"Failed to generate initial PDF: {e}")
-        raise
+        logger.error(f"Failed to generate initial PDF: {str(e)}")
+        sys.exit(1)
 
     # Step 2: Analyze PDF to determine page numbers for chapters
     try:
@@ -103,9 +106,12 @@ def create_pdf_with_toc(chapters: list[tuple[str, str]], file_name: str) -> None
                     toc.append((title, page_num + 1))
                     break
         doc.close()
+    except fitz.FileDataError as e:
+        logger.error(f"Failed to open initial PDF: {str(e)}")
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Failed to analyze PDF: {e}")
-        raise
+        logger.error(f"Failed to analyze PDF: {str(e)}")
+        sys.exit(1)
     finally:
         # Remove the temporary initial PDF file
         os.unlink(initial_pdf_path)
@@ -119,8 +125,8 @@ def create_pdf_with_toc(chapters: list[tuple[str, str]], file_name: str) -> None
     try:
         HTML(string=final_html_content).write_pdf(file_name)
     except Exception as e:
-        logger.error(f"Failed to generate final PDF: {e}")
-        raise
+        logger.error(f"Failed to generate final PDF: {str(e)}")
+        sys.exit(1)
 
 def highlight_code(code: str, language: str) -> tuple[str, str]:
     """
@@ -154,7 +160,7 @@ def process_file(file_path: str, full_repo_dir: str, chapters: list[tuple[str, e
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
     except IOError as e:
-        logger.warning(f"Failed to read file: {file_path}. Skipping...")
+        logger.warning(f"Failed to read file: {file_path}. Error: {str(e)}. Skipping...")
         return chapters, code_css
 
     # Determine the programming language
@@ -173,8 +179,11 @@ def process_file(file_path: str, full_repo_dir: str, chapters: list[tuple[str, e
 
     try:
         highlighted_code, css = highlight_code(content, language)
+    except ValueError as e:
+        logger.warning(f"Failed to highlight code for file: {file_path}. Error: {str(e)}. Using plain text.")
+        highlighted_code, css = content, ''
     except Exception as e:
-        logger.warning(f"Failed to highlight code for file: {file_path}. Using plain text.")
+        logger.warning(f"Failed to highlight code for file: {file_path}. Error: {str(e)}. Using plain text.")
         highlighted_code, css = content, ''
 
     # Save the CSS for code highlighting
@@ -204,7 +213,7 @@ def main():
     """
     Main function to execute the code-to-ebook conversion.
     """
-    repo_url = os.getenv('REPO_URL')
+    repo_url = config.get('github', 'repo_url')
     repo_name, author = extract_repo_details(repo_url)
     local_dir = repo_name
 
@@ -213,7 +222,7 @@ def main():
         full_repo_dir = clone_github_repo(repo_url, local_dir)
     except subprocess.CalledProcessError:
         logger.error("Failed to clone the repository. Exiting...")
-        return
+        sys.exit(1)
 
     # Create an EPUB book
     book = epub.EpubBook()
@@ -231,9 +240,10 @@ def main():
     code_css = None
 
     # Walk through the directory and process files
+    supported_extensions = config.get('output', 'supported_extensions').split(',')
     for root, dirs, files in os.walk(full_repo_dir):
         for file in tqdm(files, desc="Processing files", unit="file"):
-            if file.endswith(('.js', '.ts', '.py', '.jsx', '.tsx', '.rs', '.md')):
+            if file.endswith(tuple(supported_extensions)):
                 file_path = os.path.join(root, file)
                 chapters, code_css = process_file(file_path, full_repo_dir, chapters, code_css)
 
@@ -251,31 +261,36 @@ def main():
 
     # Generate book file name with timestamp
     timestamp = time.strftime('%Y%m%d%H%M%S')
-    book_file_name = f'{repo_name}_{timestamp}.epub'
+    file_name_format = config.get('output', 'file_name_format')
+    book_file_name = file_name_format.format(repo_name=repo_name, timestamp=timestamp) + '.epub'
+    pdf_file_name = file_name_format.format(repo_name=repo_name, timestamp=timestamp) + '.pdf'
+
+    # Create the output directory if it doesn't exist
+    output_dir = config.get('output', 'output_dir')
+    ensure_output_dir_exists(output_dir)
 
     # Write the EPUB file
+    epub_file_path = os.path.join(output_dir, book_file_name)
     try:
-        epub.write_epub(book_file_name, book, {})
+        epub.write_epub(epub_file_path, book, {})
     except IOError as e:
-        logger.error(f"Failed to write EPUB file: {e}")
-        return
+        logger.error(f"Failed to write EPUB file: {str(e)}")
+        sys.exit(1)
 
     # Print the generated book name and local path
     logger.info(f'Generated book: {book_file_name}')
-    logger.info(f'Local path: {os.path.abspath(book_file_name)}')
-
-    # Generate PDF file name with timestamp
-    pdf_file_name = f'{repo_name}_{timestamp}.pdf'
+    logger.info(f'Local path: {os.path.abspath(epub_file_path)}')
 
     # Call the function to create a PDF with WeasyPrint
+    pdf_file_path = os.path.join(output_dir, pdf_file_name)
     try:
-        create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_file_name)
+        create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_file_path)
     except Exception as e:
-        logger.error(f"Failed to generate PDF: {e}")
-        return
+        logger.error(f"Failed to generate PDF: {str(e)}")
+        sys.exit(1)
 
     logger.info(f'Generated PDF: {pdf_file_name}')
-    logger.info(f'Local path: {os.path.abspath(pdf_file_name)}')
+    logger.info(f'Local path: {os.path.abspath(pdf_file_path)}')
 
 if __name__ == '__main__':
     main()
