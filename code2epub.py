@@ -248,6 +248,7 @@ def create_pdf_with_toc(chapters, file_name):
         logger.error(f"Error details: {str(e)}")
         raise
 
+    # Step 2: Analyze the initial PDF to determine page numbers for each chapter
     try:
         toc = extract_toc_from_pdf(initial_pdf_path, chapters)
     except Exception as e:
@@ -322,7 +323,7 @@ def highlight_code(code, language):
     Returns:
         tuple[str, str]: A tuple containing the highlighted code and CSS styles.
 
-    The function uses Pygments library to apply syntax highlighting to the code.
+    The function uses the Pygments library to apply syntax highlighting to the code.
     It determines the appropriate lexer based on the provided language and uses
     the HtmlFormatter to generate the highlighted code and CSS styles.
 
@@ -334,28 +335,28 @@ def highlight_code(code, language):
     return highlight(code, lexer, formatter), formatter.get_style_defs('.source')
 
 def main():
-    # 创建命令行参数解析器
+    # Create command-line argument parser
     parser = argparse.ArgumentParser(description='Convert GitHub repository to EPUB and PDF')
     parser.add_argument('--repo-url', type=str, help='GitHub repository URL')
     parser.add_argument('--output-dir', type=str, default='.', help='Output directory for generated files')
     parser.add_argument('--file-name-format', type=str, default='{repo_name}_{timestamp}', help='Format for output file names')
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], help='Logging level')
 
-    # 解析命令行参数
+    # Parse command-line arguments
     args = parser.parse_args()
 
-    # 读取配置文件
+    # Read configuration file
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    # 优先使用命令行参数,如果未提供则使用配置文件中的值
+    # Use command-line arguments if provided, otherwise use values from the configuration file
     repo_url = args.repo_url or config.get('github', 'repo_url')
     output_dir = args.output_dir
     file_name_format = args.file_name_format or config.get('output', 'file_name_format')
     supported_extensions = config.get('output', 'supported_extensions').split(',')
     log_level = args.log_level or config.get('logging', 'level')
 
-    # 配置日志级别
+    # Configure logging level
     logging.basicConfig(level=getattr(logging, log_level))
 
     if len(sys.argv) > 1 and sys.argv[1] == 'test':
