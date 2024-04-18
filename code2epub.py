@@ -12,6 +12,7 @@ from ebooklib import epub
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
+import concurrent.futures
 from tqdm import tqdm
 
 # Read the configuration file
@@ -72,58 +73,54 @@ def extract_repo_details(repo_url: str) -> tuple[str, str]:
 
 def create_pdf_with_toc(chapters: list[tuple[str, str]], file_name: str) -> None:
     """
-    Create a PDF file with a table of contents.
+    Create a PDF file with a table of contents, using multithreading to process chapters.
 
     Args:
         chapters (list[tuple[str, str]]): A list of tuples containing chapter titles and content.
         file_name (str): The output file name for the PDF.
     """
-    # Step 1: Generate initial PDF without table of contents
-    html_content = "<html><body>"
-    for title, content in chapters:
-        html_content += f"<h1 id='{title}'>{title}</h1>{content}"
-    html_content += "</body></html>"
+    # Helper function to generate HTML for each chapter
+    def generate_html(index, title, content):
+        toc_entry = f"<li><a href='#chapter{index}'>{title}</a></li>"
+        chapter_html = f"<h1 id='chapter{index}'>{title}</h1>{content}"
+        return toc_entry, chapter_html
 
-    # Create a temporary file for the initial PDF
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
-        initial_pdf_path = temp_pdf.name
+    # Initialize progress bar
+    pbar = tqdm(total=len(chapters), desc="Generating PDF", unit="chapter")
 
+    # Prepare to collect chapter HTML in order
+    toc_html_list = []
+    chapters_html_list = []
+
+    # Use ThreadPoolExecutor to process chapters in parallel
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Map each chapter to the executor
+        future_to_chapter = {executor.submit(generate_html, idx, title, content): (idx, title)
+                             for idx, (title, content) in enumerate(chapters)}
+        for future in concurrent.futures.as_completed(future_to_chapter):
+            idx, title = future_to_chapter[future]
+            try:
+                toc_entry, chapter_html = future.result()
+                toc_html_list.append((idx, toc_entry))
+                chapters_html_list.append((idx, chapter_html))
+                pbar.update(1)
+            except Exception as e:
+                logger.error(f"Error processing chapter {title}: {str(e)}")
+
+    # Sort chapters by index to maintain order
+    toc_html_list.sort()
+    chapters_html_list.sort()
+    toc_html = "<h1>Table of Contents</h1><ul>" + "".join([entry for _, entry in toc_html_list]) + "</ul>"
+    chapters_html = "".join([html for _, html in chapters_html_list])
+    full_html_content = f"<html><body>{toc_html}{chapters_html}</body></html>"
+
+    # Close progress bar
+    pbar.close()
+
+    # Generate PDF from full HTML content
     try:
-        HTML(string=html_content).write_pdf(initial_pdf_path)
-    except Exception as e:
-        logger.error(f"Failed to generate initial PDF: {str(e)}")
-        sys.exit(1)
-
-    # Step 2: Analyze PDF to determine page numbers for chapters
-    try:
-        doc = fitz.open(initial_pdf_path)
-        toc = []
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            text = page.get_text("text")
-            for title, _ in chapters:
-                if title in text:
-                    toc.append((title, page_num + 1))
-                    break
-        doc.close()
-    except fitz.FileDataError as e:
-        logger.error(f"Failed to open initial PDF: {str(e)}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Failed to analyze PDF: {str(e)}")
-        sys.exit(1)
-    finally:
-        # Remove the temporary initial PDF file
-        os.unlink(initial_pdf_path)
-
-    # Step 3: Generate final PDF with table of contents
-    toc_html = "<h1>Table of Contents</h1><ul>"
-    for title, page in toc:
-        toc_html += f"<li>{title} - Page {page}</li>"
-    toc_html += "</ul>"
-    final_html_content = html_content.replace("<body>", f"<body>{toc_html}")
-    try:
-        HTML(string=final_html_content).write_pdf(file_name)
+        HTML(string=full_html_content).write_pdf(file_name)
+        logger.info(f"PDF generated successfully at {file_name}")
     except Exception as e:
         logger.error(f"Failed to generate final PDF: {str(e)}")
         sys.exit(1)
