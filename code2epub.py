@@ -103,11 +103,12 @@ class SyntaxHighlighter:
 class DocumentGenerator:
     def __init__(self, output_dir):
         self.output_dir = output_dir
+        self.ensure_output_dir_exists()
 
     def create_pdf_with_toc(self, chapters, file_name):
         toc_html_list, chapters_html_list = self.generate_chapter_html(chapters)
         full_html_content = f"<html><body>{toc_html_list}{chapters_html_list}</body></html>"
-        HTML(string=full_html_content).write_pdf(file_name)
+        HTML(string=full_html_content).write_pdf(os.path.join(self.output_dir, file_name))
 
     @staticmethod
     def generate_chapter_html(chapters):
@@ -127,6 +128,11 @@ class DocumentGenerator:
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
         epub.write_epub(os.path.join(self.output_dir, file_name), book, {})
+
+    def ensure_output_dir_exists(self):
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
 
 class EbookCreator:
     def __init__(self, config_manager, logger, git_manager, file_manager, doc_generator):
