@@ -106,9 +106,19 @@ class DocumentGenerator:
         self.ensure_output_dir_exists()
 
     def create_pdf_with_toc(self, chapters, file_name):
+        # CSS for code wrapping
+        css = """
+        <style>
+            pre, code {
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }
+        </style>
+        """
+        
         toc_html_list, chapters_html_list = self.generate_chapter_html(chapters)
-        full_html_content = f"<html><body>{toc_html_list}{chapters_html_list}</body></html>"
-        HTML(string=full_html_content).write_pdf(os.path.join(self.output_dir, file_name))
+        full_html_content = f"<html><head>{css}</head><body>{toc_html_list}{chapters_html_list}</body></html>"
+        HTML(string=full_html_content).write_pdf(file_name)
 
     @staticmethod
     def generate_chapter_html(chapters):
@@ -127,7 +137,7 @@ class DocumentGenerator:
         book.toc = [(epub.Section('Chapters'), [chapter for _, chapter in chapters])]
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
-        epub.write_epub(os.path.join(self.output_dir, file_name), book, {})
+        epub.write_epub(file_name, book, {})
 
     def ensure_output_dir_exists(self):
         if not os.path.exists(self.output_dir):
@@ -174,14 +184,16 @@ class EbookCreator:
         epub_file_name = file_name_format.format(repo_name=repo_name, timestamp=timestamp) + '.epub'
         pdf_file_name = file_name_format.format(repo_name=repo_name, timestamp=timestamp) + '.pdf'
 
-        self.doc_generator.create_epub(book, chapters, epub_file_name)
-        self.logger.info(f'Generated book: {epub_file_name}')
-        self.logger.info(f'Local path: {os.path.abspath(os.path.join(self.doc_generator.output_dir, epub_file_name))}')
+        epub_full_path = os.path.join(self.doc_generator.output_dir, epub_file_name)
+        pdf_full_path = os.path.join(self.doc_generator.output_dir, pdf_file_name)
 
-        pdf_file_path = os.path.join(self.doc_generator.output_dir, pdf_file_name)
-        self.doc_generator.create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_file_path)
-        self.logger.info(f'Generated PDF: {pdf_file_name}')
-        self.logger.info(f'Local path: {os.path.abspath(pdf_file_path)}')
+        self.doc_generator.create_epub(book, chapters, epub_full_path)
+        self.logger.info(f'Generated book: {epub_full_path}')
+        self.logger.info(f'Local path: {os.path.abspath(epub_full_path)}')
+
+        self.doc_generator.create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_full_path)
+        self.logger.info(f'Generated PDF: {pdf_full_path}')
+        self.logger.info(f'Local path: {os.path.abspath(pdf_full_path)}')
 
 def main():
     config_manager = ConfigManager()
