@@ -1,5 +1,5 @@
-fitz
-weasyprint
-ebooklib
-pygments
+PyMuPDF 
+WeasyPrint 
+EbookLib 
+Pygments 
 tqdm

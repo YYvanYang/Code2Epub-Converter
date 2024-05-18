@@ -19,3 +19,96 @@ OSError: cannot load library 'gobject-2.0-0': dlopen(gobject-2.0-0, 0x0002): tri
 
 solution:
 https://github.com/Kozea/WeasyPrint/issues/1448#issuecomment-925549118
+
+## Windows 安装 WeasyPrint 依赖
+
+WeasyPrint 依赖一些外部库，特别是在处理文本和图形时。根据错误信息，缺少 `gobject-2.0-0` 库。请按以下步骤进行安装：
+
+### Windows 安装步骤
+
+1. **安装 WeasyPrint 的依赖**
+
+   WeasyPrint 依赖 Cairo、Pango、GDK-PixBuf 和 HarfBuzz。您可以通过安装 GTK+ 的 Windows 版来获得这些依赖。
+
+2. **下载并安装 GTK+**
+
+   - 从以下链接下载 GTK+ 的 Windows 安装包: [GTK+ for Windows](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases)
+   - 下载 `gtk3-runtime-<version>.exe` 文件并运行安装。确保将安装目录添加到系统的 PATH 环境变量中。
+
+3. **安装 Python 库**
+
+   确保你的虚拟环境已激活，然后安装 WeasyPrint 及其依赖库：
+
+   ```bash
+   pip install PyMuPDF WeasyPrint EbookLib Pygments tqdm
+   ```
+
+### 验证安装
+
+安装完所有依赖后，您可以运行以下脚本来验证 WeasyPrint 是否可以正常工作：
+
+```python
+from weasyprint import HTML
+
+html = HTML(string='<h1>Hello, world!</h1>')
+html.write_pdf('output.pdf')
+```
+
+如果没有错误生成 `output.pdf` 文件，则说明 WeasyPrint 已正确安装。
+
+### 参考文档
+
+- [WeasyPrint Installation](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation)
+- [WeasyPrint Troubleshooting](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting)
+
+按照以上步骤操作应能解决 `gobject-2.0-0` 库缺失的问题。如果仍有问题，请检查系统路径设置以及是否已正确安装所有依赖。
+
+## macOS 安装 WeasyPrint 依赖
+
+在 macOS 上安装 WeasyPrint 及其依赖项可以按照以下步骤进行：
+
+### macOS 安装步骤
+
+1. **安装 Homebrew**
+
+   如果你还没有安装 Homebrew，可以使用以下命令来安装：
+
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+2. **安装 Cairo、Pango、GDK-PixBuf 和 HarfBuzz**
+
+   使用 Homebrew 安装 WeasyPrint 的依赖项：
+
+   ```bash
+   brew install cairo pango gdk-pixbuf harfbuzz
+   ```
+
+3. **安装 WeasyPrint**
+
+   确保你的虚拟环境已激活，然后使用 pip 安装 WeasyPrint 及其依赖库：
+
+   ```bash
+   pip install PyMuPDF WeasyPrint EbookLib Pygments tqdm
+   ```
+
+### 验证安装
+
+安装完所有依赖后，你可以运行以下脚本来验证 WeasyPrint 是否可以正常工作：
+
+```python
+from weasyprint import HTML
+
+html = HTML(string='<h1>Hello, world!</h1>')
+html.write_pdf('output.pdf')
+```
+
+如果没有错误生成 `output.pdf` 文件，则说明 WeasyPrint 已正确安装。
+
+### 参考文档
+
+- [WeasyPrint Installation](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation)
+- [WeasyPrint Troubleshooting](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting)
+
+按照以上步骤操作应能解决库依赖的问题。如果仍有问题，请检查系统路径设置以及是否已正确安装所有依赖。
