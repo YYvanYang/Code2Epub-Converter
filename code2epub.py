@@ -46,23 +46,32 @@ class GitManager:
         return repo_name, author
 
 class FileManager:
-    @staticmethod
-    def process_file(file_path, full_repo_dir, chapters, code_css):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except IOError as e:
-            logger.warning(f"Failed to read file: {file_path}. Error: {str(e)}. Skipping...")
+    def __init__(self, logger):
+        self.logger = logger
+
+    def process_file(self, file_path, full_repo_dir, chapters, code_css):
+        encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
+        content = None
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                break  # If reading is successful, break out of the loop
+            except (IOError, UnicodeDecodeError) as e:
+                self.logger.warning(f"Failed to read file: {file_path} with encoding {encoding}. Error: {str(e)}. Trying next encoding...")
+                continue  # Try the next encoding
+        if content is None:
+            self.logger.error(f"All encoding attempts failed for file: {file_path}. Skipping...")
             return chapters, code_css
 
-        language = FileManager.detect_language(file_path)
+        language = self.detect_language(file_path)
         highlighted_code, css = SyntaxHighlighter.highlight_code(content, language)
 
         if not code_css:
             code_css = css
 
         relative_path = os.path.relpath(file_path, start=full_repo_dir)
-        unique_file_name = FileManager.generate_unique_file_name(relative_path)
+        unique_file_name = self.generate_unique_file_name(relative_path)
         chapter_title = relative_path.replace('_', ' ').replace('/', ' > ')
 
         chapter_content = f'<h1>{os.path.basename(file_path)}</h1><style>{css}</style>{highlighted_code}'
@@ -115,7 +124,7 @@ class DocumentGenerator:
             }
         </style>
         """
-        
+
         toc_html_list, chapters_html_list = self.generate_chapter_html(chapters)
         full_html_content = f"<html><head>{css}</head><body>{toc_html_list}{chapters_html_list}</body></html>"
         HTML(string=full_html_content).write_pdf(file_name)
@@ -142,7 +151,6 @@ class DocumentGenerator:
     def ensure_output_dir_exists(self):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
-
 
 class EbookCreator:
     def __init__(self, config_manager, logger, git_manager, file_manager, doc_generator):
@@ -199,7 +207,7 @@ def main():
     config_manager = ConfigManager()
     logger = Logger.setup_logging(config_manager.get('logging', 'level'))
     git_manager = GitManager()
-    file_manager = FileManager()
+    file_manager = FileManager(logger)
     output_dir = config_manager.get('output', 'output_dir')
     doc_generator = DocumentGenerator(output_dir)
     ebook_creator = EbookCreator(config_manager, logger, git_manager, file_manager, doc_generator)
