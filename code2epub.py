@@ -5,6 +5,8 @@ import random
 import time
 import logging
 import configparser
+import asyncio
+import aiofiles
 from weasyprint import HTML
 from ebooklib import epub
 from pygments import highlight
@@ -12,6 +14,8 @@ from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
 import concurrent.futures
 from tqdm import tqdm
+from lxml import etree
+import io
 
 class ConfigManager:
     def __init__(self, config_file='config.ini'):
@@ -30,8 +34,7 @@ class Logger:
 class GitManager:
     @staticmethod
     def clone_repo(repo_url, local_dir):
-        if not os.path.exists('repo'):
-            os.makedirs('repo')
+        os.makedirs('repo', exist_ok=True)
         full_path = os.path.join('repo', local_dir)
         if os.path.exists(full_path):
             subprocess.run(['rm', '-rf', full_path], check=True)
@@ -46,57 +49,55 @@ class GitManager:
         return repo_name, author
 
 class FileManager:
-    def __init__(self, logger):
+    def __init__(self, logger, supported_extensions):
         self.logger = logger
+        self.supported_extensions = supported_extensions
 
-    def process_file(self, file_path, full_repo_dir, chapters, code_css):
-        encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
-        content = None
-        for encoding in encodings:
-            try:
-                with open(file_path, 'r', encoding=encoding) as f:
-                    content = f.read()
-                break  # If reading is successful, break out of the loop
-            except (IOError, UnicodeDecodeError) as e:
-                self.logger.warning(f"Failed to read file: {file_path} with encoding {encoding}. Error: {str(e)}. Trying next encoding...")
-                continue  # Try the next encoding
+    def process_file(self, file_path, full_repo_dir):
+        content = self._read_file(file_path)
         if content is None:
-            self.logger.error(f"All encoding attempts failed for file: {file_path}. Skipping...")
-            return chapters, code_css
+            return None
 
-        language = self.detect_language(file_path)
+        language = self._detect_language(file_path)
         highlighted_code, css = SyntaxHighlighter.highlight_code(content, language)
 
-        if not code_css:
-            code_css = css
-
         relative_path = os.path.relpath(file_path, start=full_repo_dir)
-        unique_file_name = self.generate_unique_file_name(relative_path)
+        unique_file_name = self._generate_unique_file_name(relative_path)
         chapter_title = relative_path.replace('_', ' ').replace('/', ' > ')
 
         chapter_content = f'<h1>{os.path.basename(file_path)}</h1><style>{css}</style>{highlighted_code}'
         chapter = epub.EpubHtml(title=chapter_title, file_name=unique_file_name + '.xhtml', lang='en')
         chapter.content = chapter_content
-        chapters.append((chapter_title, chapter))
 
-        return chapters, code_css
+        return chapter_title, chapter, css
 
-    @staticmethod
-    def detect_language(file_path):
-        if file_path.endswith('.py'):
-            return 'python'
-        elif file_path.endswith(('.js', '.jsx')):
-            return 'javascript'
-        elif file_path.endswith(('.ts', '.tsx')):
-            return 'typescript'
-        elif file_path.endswith('.rs'):
-            return 'rust'
-        elif file_path.endswith('.md'):
-            return 'markdown'
-        return 'text'
+    def _read_file(self, file_path):
+        encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    return f.read()
+            except (IOError, UnicodeDecodeError) as e:
+                self.logger.warning(f"Failed to read file: {file_path} with encoding {encoding}. Error: {str(e)}. Trying next encoding...")
+        self.logger.error(f"All encoding attempts failed for file: {file_path}. Skipping...")
+        return None
 
     @staticmethod
-    def generate_unique_file_name(relative_path):
+    def _detect_language(file_path):
+        extension = os.path.splitext(file_path)[1].lower()
+        language_map = {
+            '.py': 'python',
+            '.js': 'javascript',
+            '.jsx': 'javascript',
+            '.ts': 'typescript',
+            '.tsx': 'typescript',
+            '.rs': 'rust',
+            '.md': 'markdown'
+        }
+        return language_map.get(extension, 'text')
+
+    @staticmethod
+    def _generate_unique_file_name(relative_path):
         return "".join([c for c in relative_path.replace(os.path.sep, '_').replace(' ', '_') if c.isalpha() or c.isdigit() or c in ['_', '.']])
 
 class SyntaxHighlighter:
@@ -112,10 +113,9 @@ class SyntaxHighlighter:
 class DocumentGenerator:
     def __init__(self, output_dir):
         self.output_dir = output_dir
-        self.ensure_output_dir_exists()
+        os.makedirs(self.output_dir, exist_ok=True)
 
-    def create_pdf_with_toc(self, chapters, file_name):
-        # CSS for code wrapping
+    async def create_pdf_with_toc(self, chapters, file_name, chunk_size=50):
         css = """
         <style>
             pre, code {
@@ -125,19 +125,50 @@ class DocumentGenerator:
         </style>
         """
 
-        toc_html_list, chapters_html_list = self.generate_chapter_html(chapters)
-        full_html_content = f"<html><head>{css}</head><body>{toc_html_list}{chapters_html_list}</body></html>"
-        HTML(string=full_html_content).write_pdf(file_name)
+        root = etree.Element("html")
+        head = etree.SubElement(root, "head")
+        head.append(etree.XML(css))
+        body = etree.SubElement(root, "body")
 
-    @staticmethod
-    def generate_chapter_html(chapters):
-        toc_html = "<h1>Table of Contents</h1><ul>"
-        chapters_html = ""
-        for idx, (title, content) in enumerate(chapters):
-            toc_html += f"<li><a href='#chapter{idx}'>{title}</a></li>"
-            chapters_html += f"<h1 id='chapter{idx}'>{title}</h1>{content}"
-        toc_html += "</ul>"
-        return toc_html, chapters_html
+        # Generate ToC
+        toc = etree.SubElement(body, "h1")
+        toc.text = "Table of Contents"
+        toc_list = etree.SubElement(body, "ul")
+
+        # Process chapters in chunks
+        for i in range(0, len(chapters), chunk_size):
+            chunk = chapters[i:i+chunk_size]
+            await self._process_chunk(chunk, body, toc_list, i)
+
+        # Generate PDF
+        html_content = etree.tostring(root, pretty_print=True, encoding='unicode')
+        pdf_bytes = await self._generate_pdf(html_content)
+
+        # Write PDF to file
+        async with aiofiles.open(file_name, 'wb') as f:
+            await f.write(pdf_bytes)
+
+    async def _process_chunk(self, chunk, body, toc_list, start_index):
+        for idx, (title, content) in enumerate(chunk, start=start_index):
+            # Add to ToC
+            toc_item = etree.SubElement(toc_list, "li")
+            toc_link = etree.SubElement(toc_item, "a", href=f'#chapter{idx}')
+            toc_link.text = title
+
+            # Add chapter content
+            chapter = etree.SubElement(body, "h1", id=f'chapter{idx}')
+            chapter.text = title
+            chapter_content = etree.fromstring(f"<div>{content}</div>")
+            body.append(chapter_content)
+
+    async def _generate_pdf(self, html_content):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._weasyprint_render, html_content)
+
+    def _weasyprint_render(self, html_content):
+        pdf_bytes = io.BytesIO()
+        HTML(string=html_content).write_pdf(pdf_bytes)
+        return pdf_bytes.getvalue()
 
     def create_epub(self, book, chapters, file_name):
         for _, chapter in chapters:
@@ -148,10 +179,6 @@ class DocumentGenerator:
         book.add_item(epub.EpubNav())
         epub.write_epub(file_name, book, {})
 
-    def ensure_output_dir_exists(self):
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-
 class EbookCreator:
     def __init__(self, config_manager, logger, git_manager, file_manager, doc_generator):
         self.config_manager = config_manager
@@ -160,7 +187,7 @@ class EbookCreator:
         self.file_manager = file_manager
         self.doc_generator = doc_generator
 
-    def run(self):
+    async def run(self):
         repo_url = self.config_manager.get('github', 'repo_url')
         repo_name, author = self.git_manager.extract_repo_details(repo_url)
         local_dir = repo_name
@@ -181,11 +208,17 @@ class EbookCreator:
         code_css = None
 
         supported_extensions = self.config_manager.get('output', 'supported_extensions').split(',')
-        for root, dirs, files in os.walk(full_repo_dir):
-            for file in tqdm(files, desc="Processing files", unit="file"):
-                if file.endswith(tuple(supported_extensions)):
-                    file_path = os.path.join(root, file)
-                    chapters, code_css = self.file_manager.process_file(file_path, full_repo_dir, chapters, code_css)
+        files_to_process = self._get_files_to_process(full_repo_dir, supported_extensions)
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_file = {executor.submit(self.file_manager.process_file, file_path, full_repo_dir): file_path for file_path in files_to_process}
+            for future in tqdm(concurrent.futures.as_completed(future_to_file), total=len(files_to_process), desc="Processing files"):
+                result = future.result()
+                if result:
+                    chapter_title, chapter, css = result
+                    chapters.append((chapter_title, chapter))
+                    if not code_css:
+                        code_css = css
 
         timestamp = time.strftime('%Y%m%d%H%M%S')
         file_name_format = self.config_manager.get('output', 'file_name_format')
@@ -199,19 +232,28 @@ class EbookCreator:
         self.logger.info(f'Generated book: {epub_full_path}')
         self.logger.info(f'Local path: {os.path.abspath(epub_full_path)}')
 
-        self.doc_generator.create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_full_path)
+        await self.doc_generator.create_pdf_with_toc([(title, chapter.content) for title, chapter in chapters], pdf_full_path)
         self.logger.info(f'Generated PDF: {pdf_full_path}')
         self.logger.info(f'Local path: {os.path.abspath(pdf_full_path)}')
 
-def main():
+    def _get_files_to_process(self, full_repo_dir, supported_extensions):
+        files_to_process = []
+        for root, _, files in os.walk(full_repo_dir):
+            for file in files:
+                if file.endswith(tuple(supported_extensions)):
+                    files_to_process.append(os.path.join(root, file))
+        return files_to_process
+
+async def main():
     config_manager = ConfigManager()
     logger = Logger.setup_logging(config_manager.get('logging', 'level'))
     git_manager = GitManager()
-    file_manager = FileManager(logger)
+    supported_extensions = config_manager.get('output', 'supported_extensions').split(',')
+    file_manager = FileManager(logger, supported_extensions)
     output_dir = config_manager.get('output', 'output_dir')
     doc_generator = DocumentGenerator(output_dir)
     ebook_creator = EbookCreator(config_manager, logger, git_manager, file_manager, doc_generator)
-    ebook_creator.run()
+    await ebook_creator.run()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

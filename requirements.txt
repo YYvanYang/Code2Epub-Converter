@@ -1,5 +1,6 @@
-pymupdf
 WeasyPrint
 EbookLib
 Pygments
 tqdm
+lxml
+aiofiles
