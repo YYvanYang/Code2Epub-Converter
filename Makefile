@@ -28,10 +28,11 @@ setup:
 
 run:
 	@echo "开始运行程序..."
-	./venv/bin/python code2epub.py
+	./venv/bin/python sourcecode_reader.py
 
 clean:
-	rm -rf output/*
+	rm -rf output/*_*.pdf  # 清理带时间戳的PDF文件
+	rm -rf output/*_*.epub # 清理带时间戳的EPUB文件
 	rm -rf repo/*
 	rm -rf venv
 	rm -rf __pycache__

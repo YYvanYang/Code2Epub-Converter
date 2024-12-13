@@ -67,11 +67,11 @@ monofont = Menlo  # 代码字体
 
 ```
 .
-├── code2epub.py      # 主程序
-├── config.ini        # 配置文件
-├── requirements.txt  # Python 依赖
-├── Makefile         # 构建脚本
-└── templates/       # LaTeX 模板
+├── sourcecode_reader.py  # 主程序
+├── config.ini           # 配置文件
+├── requirements.txt     # Python 依赖
+├── Makefile            # 构建脚本
+└── templates/          # LaTeX 模板
     └── latex/
         ├── main.tex
         └── includes/

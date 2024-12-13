@@ -114,6 +114,10 @@ class DocumentGenerator:
     async def create_documents(self, chapters, base_filename):
         """使用pandoc生成文档"""
         try:
+            # 添加时间戳到文件名
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            output_basename = f"{base_filename}_{timestamp}"
+            
             with tempfile.TemporaryDirectory() as temp_dir:
                 # 写入章节文件
                 chapter_files = []
@@ -123,13 +127,11 @@ class DocumentGenerator:
                         await f.write(f"# {title}\n\n```{self._detect_language(title)}\n{content}\n```\n\n")
                     chapter_files.append(file_path)
 
-                # 生成PDF
-                await self._generate_pdf(chapter_files, base_filename)
-                
-                # 生成EPUB
-                await self._generate_epub(chapter_files, base_filename)
+                # 生成PDF和EPUB
+                success_pdf = await self._generate_pdf(chapter_files, output_basename)
+                success_epub = await self._generate_epub(chapter_files, output_basename)
 
-                return True
+                return success_pdf and success_epub
 
         except Exception as e:
             self.logger.error(f"生成文档时发生错误: {str(e)}")
@@ -142,8 +144,9 @@ class DocumentGenerator:
         # 使用 r-string 来处理反斜杠
         today_value = r'\today'
         
-        # 从仓库名生成标题
-        default_title = f"{base_filename.replace('-', ' ').title()} 源码阅读笔记"
+        # 从仓库名生成标题（移除时间戳部分）
+        repo_name = base_filename.split('_')[0]  # 获取时间戳之前的部分
+        default_title = f"{repo_name.replace('-', ' ').title()} 源码阅读笔记"
         
         cmd = [
             "pandoc",
@@ -182,7 +185,6 @@ class DocumentGenerator:
     async def _generate_epub(self, md_files, base_filename):
         """使用pandoc生成EPUB"""
         try:
-            # 添加正确的文件路径和后缀
             epub_output = os.path.join(self.output_dir, f"{base_filename}.epub")
             
             cmd = [
@@ -192,7 +194,7 @@ class DocumentGenerator:
                 "--toc",
                 "--toc-depth=2",
                 "--epub-chapter-level=1",
-                "-o", epub_output  # 使用完整的输出路径
+                "-o", epub_output
             ] + md_files
 
             process = await asyncio.create_subprocess_exec(
@@ -207,7 +209,7 @@ class DocumentGenerator:
                 self.logger.error(f"EPUB生成失败: {stderr.decode()}")
                 return False
 
-            self.logger.info(f"EPUB文档已生成: {epub_output}")  # 更新日志消息
+            self.logger.info(f"EPUB文档已生成: {epub_output}")
             return True
 
         except Exception as e:
