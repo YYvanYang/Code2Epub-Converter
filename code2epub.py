@@ -142,6 +142,9 @@ class DocumentGenerator:
         # 使用 r-string 来处理反斜杠
         today_value = r'\today'
         
+        # 从仓库名生成标题
+        default_title = f"{base_filename.replace('-', ' ').title()} 源码阅读笔记"
+        
         cmd = [
             "pandoc",
             "--from", "markdown",
@@ -151,8 +154,8 @@ class DocumentGenerator:
             "--toc",
             "--toc-depth=2",
             "--template=templates/latex/main.tex",
-            "-V", f"title={self.config.get('document', 'title', fallback='Code Documentation')}",
-            "-V", f"author={self.config.get('document', 'author', fallback='Code2EPUB')}",
+            "-V", f"title={self.config.get('document', 'title', fallback=default_title)}",
+            "-V", f"author={self.config.get('document', 'author', fallback='SourceCode Reader')}",
             "-V", f"date={self.config.get('document', 'date', fallback=today_value)}",
             "-V", f"geometry:margin={self.config.get('document', 'margin', fallback='2.5cm')}",
             "-V", f"mainfont={self.config.get('document', 'mainfont', fallback='Songti SC')}",
@@ -176,9 +179,12 @@ class DocumentGenerator:
         self.logger.info(f"PDF文档已生成: {pdf_output}")
         return True
 
-    async def _generate_epub(self, md_files, output_path):
+    async def _generate_epub(self, md_files, base_filename):
         """使用pandoc生成EPUB"""
         try:
+            # 添加正确的文件路径和后缀
+            epub_output = os.path.join(self.output_dir, f"{base_filename}.epub")
+            
             cmd = [
                 "pandoc",
                 "--from", "markdown",
@@ -186,7 +192,7 @@ class DocumentGenerator:
                 "--toc",
                 "--toc-depth=2",
                 "--epub-chapter-level=1",
-                "-o", output_path
+                "-o", epub_output  # 使用完整的输出路径
             ] + md_files
 
             process = await asyncio.create_subprocess_exec(
@@ -201,7 +207,7 @@ class DocumentGenerator:
                 self.logger.error(f"EPUB生成失败: {stderr.decode()}")
                 return False
 
-            self.logger.info(f"EPUB文档已生成: {output_path}")
+            self.logger.info(f"EPUB文档已生成: {epub_output}")  # 更新日志消息
             return True
 
         except Exception as e:
