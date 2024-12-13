@@ -1,6 +1,14 @@
 WeasyPrint
+pdfkit
+markdown2pdf
 EbookLib
 Pygments
 tqdm
 lxml
 aiofiles
+rich
+typer
+pathspec
+chardet
+python-magic; platform_system != "Windows"
+python-magic-bin; platform_system == "Windows"

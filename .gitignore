@@ -4,3 +4,4 @@ repo
 *.pdf
 .DS_Store
 output
+venv
