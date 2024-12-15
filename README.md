@@ -1,61 +1,119 @@
-# Code2Epub Converter
+# SourceCode Reader
 
-## 简介
+一个将开源项目代码转换为 PDF 和 EPUB 格式的源码阅读工具。支持代码高亮、目录生成、中文显示等功能。
 
-Code2Epub Converter 是一个用于将代码仓库转换成 EPUB 格式电子书的工具。它可以遍历指定的代码仓库，将代码文件转换为 EPUB 格式的章节，方便在支持 EPUB 格式的电子书阅读器上阅读和查看代码。
+## 功能特性
 
-## 安装
+- 自动从 GitHub 克隆代码仓库
+- 智能识别文件编码
+- 生成带目录的 PDF 文档
+- 生成 EPUB 电子书
+- 代码语法高亮
+- 优雅的中文排版
+- 自定义 LaTeX 模板
 
-本项目依赖于 Python 3 和一些第三方库。在开始之前，请确保您的系统已经安装了 Python 3（推荐 Python 3.6 或更高版本）。
+## 安装要求
 
-### 安装 Python 3
+- Python 3.7+
+- pandoc
+- XeLaTeX
+- macOS 自带字体：
+  - Songti SC（宋体）
+  - PingFang SC（苹方）
+  - Menlo（等宽字体）
 
-请访问 [Python 官网](https://www.python.org/) 下载并安装适合您操作系统的 Python 3 版本。
+## 快速开始
 
-### 安装依赖
+1. 克隆仓库：
+   ```bash
+   git clone https://github.com/yourusername/sourcecode-reader.git
+   cd sourcecode-reader
+   ```
 
-本项目依赖于以下库：
+2. 安装依赖：
+   ```bash
+   make setup
+   ```
 
-- `ebooklib`: 用于生成 EPUB 文件。
-- `pygments`: 用于代码高亮。
-- `python-dotenv`: 用于从 `.env` 文件加载环境变量。
+3. 配置：
+   编辑 `config.ini` 文件，设置 GitHub 仓库 URL 和其他选项。
 
-您可以通过以下命令安装这些依赖：
+4. 运行：
+   ```bash
+   make run
+   ```
 
-```bash
-pip install ebooklib pygments python-dotenv
+## 配置说明
+
+在 `config.ini` 文件中：
+
+```ini
+[github]
+repo_url = https://github.com/username/repo.git  # 目标仓库地址
+
+[output]
+output_dir = output  # 输出目录
+supported_extensions = .py,.js,.rs,.md  # 支持的文件类型
+
+[document]
+title = 开源项目源码阅读  # 文档标题
+author = SourceCode Reader  # 作者
+mainfont = Songti SC  # 正文字体
+sansfont = PingFang SC  # 标题字体
+monofont = Menlo  # 代码字体
 ```
 
-## 配置
+## 目录结构
 
-1. 在项目根目录下创建一个 `.env` 文件，并配置您的代码仓库路径。例如：
-
-```env
-REPO_URL=https://your-repository-url-here.git
+```
+.
+├── sourcecode_reader.py  # 主程序
+├── config.ini           # 配置文件
+├── requirements.txt     # Python 依赖
+├── Makefile            # 构建脚本
+└── templates/          # LaTeX 模板
+    └── latex/
+        ├── main.tex
+        └── includes/
+            └── packages.tex
 ```
 
-请将 `https://your-repository-url-here.git` 替换为您的代码仓库的实际 URL。
+## 使用说明
 
-## 使用方法
+1. 一键生成：
+   ```bash
+   make
+   ```
 
-1. 确保您已经在 `.env` 文件中正确配置了仓库 URL。
-2. 运行 Code2Epub Converter。脚本会读取 `.env` 文件中的 `REPO_URL`，克隆仓库并开始转换过程。
+2. 分步执行：
+   ```bash
+   make setup  # 安装依赖
+   make run    # 运行程序
+   ```
 
-```bash
-python code2epub.py
-```
+3. 清理文件：
+   ```bash
+   make clean
+   ```
 
-## 功能特点
+## 支持的文件类型
 
-- **代码高亮**：利用 `pygments` 实现代码高亮，使代码更易读。
-- **自动目录生成**：根据代码仓库的结构自动生成 EPUB 的目录，方便快速导航。
-- **文件名冲突处理**：通过将文件路径转换为唯一文件名来避免文件名冲突。
-- **环境变量支持**：支持从 `.env` 文件加载配置，简化配置过程。
-
-## 贡献
-
-欢迎通过 GitHub Pull Requests 或 Issues 提交贡献或反馈。
+- Python (.py)
+- JavaScript/TypeScript (.js, .jsx, .ts, .tsx)
+- Rust (.rs)
+- Markdown (.md)
+- JSON (.json)
+- Shell (.sh)
+- YAML (.yaml, .yml)
+- TOML (.toml)
+- 更多文件类型见 config.ini
 
 ## 许可证
 
-本项目采用 MIT 许可证。有关详细信息，请查看 `LICENSE` 文件。
+MIT License
+
+## 致谢
+
+- pandoc
+- XeLaTeX
+- Python 及其相关库
